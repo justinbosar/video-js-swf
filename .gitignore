@@ -1,2 +1,5 @@
 .DS_Store
+*.as3proj
 test/*
+bin/
+lib/

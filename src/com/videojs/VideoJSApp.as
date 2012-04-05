@@ -7,7 +7,7 @@ package com.videojs{
         
         private var _uiView:VideoJSView;
         private var _model:VideoJSModel;
-        
+		
         public function VideoJSApp(){
             
             _model = VideoJSModel.getInstance()
@@ -16,7 +16,7 @@ package com.videojs{
             addChild(_uiView);
 
         }
-        
+		
         public function get model():VideoJSModel{
             return _model;
         }

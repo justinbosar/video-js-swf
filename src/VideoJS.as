@@ -1,10 +1,12 @@
 package{
     
     import com.videojs.VideoJSApp;
+	import com.videojs.VideoJSConsole;
     import com.videojs.VideoJSModel;
     import com.videojs.VideoJSView;
     import com.videojs.events.VideoJSEvent;
     import com.videojs.structs.ExternalErrorEventName;
+	import flash.events.KeyboardEvent;
     
     import flash.display.Sprite;
     import flash.display.StageAlign;
@@ -24,6 +26,11 @@ package{
     [SWF(backgroundColor="#000000", frameRate="60", width="480", height="270")]
     public class VideoJS extends Sprite{
         
+		/**
+		 * disable to build without console...  TODO: conditional compiling??
+		 */
+		public static const ALLOW_CONSOLE:Boolean = true;
+		
         private var _app:VideoJSApp;
         private var _stageSizeTimer:Timer;
         
@@ -33,7 +40,8 @@ package{
             addEventListener(Event.ADDED_TO_STAGE, onAddedToStage);
         }
         
-        private function init():void{
+        private function init():void {
+			if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.init()');
             // Allow JS calls from other domains
             Security.allowDomain("*");
             Security.allowInsecureDomain("*");
@@ -49,9 +57,18 @@ package{
             
             _app = new VideoJSApp();
             addChild(_app);
-
+			
+			// watch for console hotkey
+			if (ALLOW_CONSOLE) 
+			{
+				if (stage != null) stage.focus = this;
+				this.addEventListener(KeyboardEvent.KEY_UP, watchKeys, false, 0, false);
+				this.addEventListener(Event.ENTER_FRAME, keepFocusOnFrame, false, 0, true);
+				//this.addChild(VideoJSConsole.instance);
+			}
+			
             _app.model.stageRect = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);
-
+			
             // add content-menu version info
             var _ctxVersion:ContextMenuItem = new ContextMenuItem("VideoJS Flash Component v3.0.1", false, false);
             var _ctxAbout:ContextMenuItem = new ContextMenuItem("Copyright © 2012 Zencoder, Inc.", false, false);
@@ -95,7 +112,7 @@ package{
         }
         
         private function finish():void{
-            
+			if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.finish()');
             if(loaderInfo.parameters.mode != undefined){
                 _app.model.mode = loaderInfo.parameters.mode;
             }
@@ -116,11 +133,13 @@ package{
                 _app.model.preload = true;
             }
             
-            if(loaderInfo.parameters.poster != undefined && loaderInfo.parameters.poster != ""){
+            if (loaderInfo.parameters.poster != undefined && loaderInfo.parameters.poster != "") {
+				if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.finish() -> parameters.poster = ' + loaderInfo.parameters.poster);
                 _app.model.poster = String(loaderInfo.parameters.poster);
             }
             
             if(loaderInfo.parameters.src != undefined && loaderInfo.parameters.src != ""){
+				if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.finish() -> parameters.src = ' + loaderInfo.parameters.src);
                 _app.model.srcFromFlashvars = String(loaderInfo.parameters.src);
             }
             else{
@@ -144,14 +163,38 @@ package{
             }
         }
         
-        private function onAddedToStage(e:Event):void{
+        private function onAddedToStage(e:Event):void {
             stage.addEventListener(Event.RESIZE, onStageResize);
             stage.scaleMode = StageScaleMode.NO_SCALE;
             stage.align = StageAlign.TOP_LEFT;
             _stageSizeTimer.start();
         }
+		
+		/**
+		 * if the console is allowed, try to keep the keyboard focus
+		 * 
+		 * @param	evt check on frame
+		 */
+		private function keepFocusOnFrame(evt:Event = null):void
+		{
+			if (stage != null) stage.focus = this;
+		}
+		
+		private function watchKeys(evt:KeyboardEvent):void
+		{
+			trace("watchKeys: " + evt.keyCode);
+			switch (evt.keyCode) 
+			{
+				case 192: // `~
+					if (!this.contains(VideoJSConsole.instance)) this.addChild(VideoJSConsole.instance);
+					else this.removeChild(VideoJSConsole.instance);
+					break;
+				default:
+					break;
+			}
+		}
         
-        private function onStageSizeTimerTick(e:TimerEvent):void{
+        private function onStageSizeTimerTick(e:TimerEvent):void {
             if(stage.stageWidth > 0 && stage.stageHeight > 0){
                 _stageSizeTimer.stop();
                 _stageSizeTimer.removeEventListener(TimerEvent.TIMER, onStageSizeTimerTick);
@@ -159,7 +202,7 @@ package{
             }
         }
         
-        private function onStageResize(e:Event):void{
+        private function onStageResize(e:Event):void {
             if(_app != null){
                 _app.model.stageRect = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);
                 _app.model.broadcastEvent(new VideoJSEvent(VideoJSEvent.STAGE_RESIZE, {}));
@@ -171,14 +214,18 @@ package{
         }
         
         private function onGetPropertyCalled(pPropertyName:String = ""):*{
-
-            switch(pPropertyName){
+			//if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.onGetPropertyCalled(): ' + pPropertyName);
+			// originally, first 3 cases were missing a break...was that intentional?  probably not a problem because of return statements, but otherwise would cause fall through
+			switch(pPropertyName){
                 case "mode":
                     return _app.model.mode;
+					break;
                 case "autoplay":
                     return _app.model.autoplay;
+					break;
                 case "loop":
                     return _app.model.loop;
+					break;
                 case "preload":
                     return _app.model.preload;    
                     break;
@@ -253,7 +300,7 @@ package{
         }
         
         private function onSetPropertyCalled(pPropertyName:String = "", pValue:* = null):void{
-
+			if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.onSetPropertyCalled(): ' + pPropertyName + " : " + pValue);
             switch(pPropertyName){
                 case "mode":
                     _app.model.mode = String(pValue);

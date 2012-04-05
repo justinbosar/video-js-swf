@@ -53,9 +53,10 @@ package com.videojs{
         private var _rtmpConnectionURL:String = "";
         private var _rtmpStream:String = "";
         private var _poster:String = "";
-        
         private static var _instance:VideoJSModel;
         
+        public static var isSilent:Boolean = false; // temp
+		
         public function VideoJSModel(pLock:SingletonLock){
             if (!pLock is SingletonLock) {
                 throw new Error("Invalid Singleton access.  Use VideoJSModel.getInstance()!");
@@ -156,8 +157,9 @@ package com.videojs{
         }
         
         public function get duration():Number{
-            if(_provider){
-                return _provider.duration;
+            if (_provider) {
+				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).durationForModel;
+                else return _provider.duration;
             }
             return 0;
         }
@@ -180,6 +182,7 @@ package com.videojs{
             _rtmpConnectionURL = "";
             _rtmpStream = "";
             _currentPlaybackType = PlaybackType.HTTP;
+			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('VideoJSModel -> set src: ' + pValue);
             broadcastEventExternally(ExternalEventName.ON_SRC_CHANGE, _src);
             initProvider();
             if(_autoplay){
@@ -248,13 +251,14 @@ package com.videojs{
         }
         
         /**
-         * Returns the playhead position of the current video, in seconds. 
+         * Returns the playhead position of the current video, in seconds. May be offset if we've skipped ahead beyond the original buffer
          * @return 
          * 
          */        
         public function get time():Number{
             if(_provider){
-                return _provider.time;
+				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).timeForModel;
+                else return _provider.time;
             }
             return 0;
         }
@@ -309,7 +313,8 @@ package com.videojs{
         
         public function get buffered():Number{
             if(_provider){
-                return _provider.buffered;
+				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).bufferedForModel;
+                else return _provider.buffered;
             }
             return 0;
         }
@@ -397,9 +402,10 @@ package com.videojs{
          */        
         public function broadcastEventExternally(... args):void{
             if(_jsEventProxyName != ""){
-                if(ExternalInterface.available){
+                if(ExternalInterface.available && !isSilent){
                     var __incomingArgs:* = args as Array;
                     var __newArgs:Array = [_jsEventProxyName, ExternalInterface.objectID].concat(__incomingArgs);
+					if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('VideoJSModel.broadcastEventExternally(): ' + __newArgs + ' ; ' + __incomingArgs); 
                     ExternalInterface.call.apply(null, __newArgs);
                 }
             }
@@ -415,6 +421,7 @@ package com.videojs{
                 if(ExternalInterface.available){
                     var __incomingArgs:* = args as Array;
                     var __newArgs:Array = [_jsErrorEventProxyName, ExternalInterface.objectID].concat(__incomingArgs);
+					if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('VideoJSModel.broadcastErrorEventExternally(): ' + __newArgs + ' ; ' + __incomingArgs); 
                     ExternalInterface.call.apply(null, __newArgs);
                 }
             }
