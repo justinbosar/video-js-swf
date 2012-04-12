@@ -3,6 +3,7 @@ package com.videojs{
     import com.videojs.events.VideoJSEvent;
     import com.videojs.events.VideoPlaybackEvent;
     import com.videojs.providers.HTTPAudioProvider;
+	import com.videojs.providers.HTTPPartialVideoProvider;
     import com.videojs.providers.HTTPVideoProvider;
     import com.videojs.providers.IProvider;
     import com.videojs.providers.RTMPVideoProvider;
@@ -55,7 +56,10 @@ package com.videojs{
         private var _poster:String = "";
         private static var _instance:VideoJSModel;
         
-        public static var isSilent:Boolean = false; // temp
+		/**
+		 * if true, external event broadcasts will be stopped.  this is useful when the metadata changes but the JS GUI doesn't need to know (like in sub-clips)
+		 */
+        public static var isSilent:Boolean = false;
 		
         public function VideoJSModel(pLock:SingletonLock){
             if (!pLock is SingletonLock) {
@@ -63,7 +67,7 @@ package com.videojs{
             }
             else{
                 _mode = PlayerMode.VIDEO;
-                _currentPlaybackType = PlaybackType.HTTP;
+                _currentPlaybackType = VideoJS.allowPartial ? PlaybackType.HTTP_PARTIAL : PlaybackType.HTTP;
                 _masterVolume = new SoundTransform();
                 _stageRect = new Rectangle(0, 0, 100, 100);
             }
@@ -158,7 +162,7 @@ package com.videojs{
         
         public function get duration():Number{
             if (_provider) {
-				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).durationForModel;
+				if (_provider is HTTPPartialVideoProvider) return (_provider as HTTPPartialVideoProvider).durationForModel;
                 else return _provider.duration;
             }
             return 0;
@@ -181,7 +185,7 @@ package com.videojs{
             _src = pValue;
             _rtmpConnectionURL = "";
             _rtmpStream = "";
-            _currentPlaybackType = PlaybackType.HTTP;
+            _currentPlaybackType = VideoJS.allowPartial ? PlaybackType.HTTP_PARTIAL : PlaybackType.HTTP;
 			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('VideoJSModel -> set src: ' + pValue);
             broadcastEventExternally(ExternalEventName.ON_SRC_CHANGE, _src);
             initProvider();
@@ -224,7 +228,7 @@ package com.videojs{
          */        
         public function set srcFromFlashvars(pValue:String):void{
             _src = pValue;
-            _currentPlaybackType = PlaybackType.HTTP
+            _currentPlaybackType = VideoJS.allowPartial ? PlaybackType.HTTP_PARTIAL : PlaybackType.HTTP;
             initProvider();
             if(_autoplay){
                 _provider.play();
@@ -257,7 +261,7 @@ package com.videojs{
          */        
         public function get time():Number{
             if(_provider){
-				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).timeForModel;
+				if (_provider is HTTPPartialVideoProvider) return (_provider as HTTPPartialVideoProvider).timeForModel;
                 else return _provider.time;
             }
             return 0;
@@ -313,7 +317,7 @@ package com.videojs{
         
         public function get buffered():Number{
             if(_provider){
-				if (_provider is HTTPVideoProvider) return (_provider as HTTPVideoProvider).bufferedForModel;
+				if (_provider is HTTPPartialVideoProvider) return (_provider as HTTPPartialVideoProvider).bufferedForModel;
                 else return _provider.buffered;
             }
             return 0;
@@ -547,6 +551,13 @@ package com.videojs{
                         _provider.attachVideo(_videoReference);
                         _provider.init(__src, _autoplay);
                     }
+					else if (_currentPlaybackType == PlaybackType.HTTP_PARTIAL) {
+						__src = { path:_src };
+						// this is like HTTPVideoProvider, but it also supports sub-clip requests using the "ms=X" query parameter
+						_provider = new HTTPPartialVideoProvider();
+						_provider.attachVideo(_videoReference);
+						_provider.init(__src, _autoplay);
+					}
                     
                     break;
                 case PlayerMode.AUDIO:

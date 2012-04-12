@@ -19,61 +19,45 @@ package com.videojs.providers{
     
     public class HTTPVideoProvider extends EventDispatcher implements IProvider{
         
-        private var _nc:NetConnection;
-        private var _ns:NetStream;
-        private var _throughputTimer:Timer;
-        private var _currentThroughput:int = 0; // in B/sec
-        private var _loadStartTimestamp:int;
-        private var _loadStarted:Boolean = false;
-        private var _loadCompleted:Boolean = false;
-        private var _loadErrored:Boolean = false;
-        private var _pauseOnStart:Boolean = false;
-        private var _pausePending:Boolean = false;
-        private var _videoReference:Video;
+        protected var _nc:NetConnection;
+        protected var _ns:NetStream;
+        protected var _throughputTimer:Timer;
+        protected var _currentThroughput:int = 0; // in B/sec
+        protected var _loadStartTimestamp:int;
+        protected var _loadStarted:Boolean = false;
+        protected var _loadCompleted:Boolean = false;
+        protected var _loadErrored:Boolean = false;
+        protected var _pauseOnStart:Boolean = false;
+        protected var _pausePending:Boolean = false;
+        protected var _videoReference:Video;
 		
-		/**
-		 * When you attempt to skip ahead to an unbuffered point, special behaviors may be required
-		 */
-		private var _isStreaming:Boolean = false;
-		
-		/**
-		 * If the stream has been re-fetched with an "ms" parameter (offset buffer / partial media) we'll need to save that value to report to the GUI
-		 */
-		private var _previousStreamingOffset:Number = 0;
-		
-		/**
-		 * cache the first duration metadata encountered, in case we want to hide subsequent ones from the external scrubber logic.
-		 */
-		private var _originalDuration:int = -1;
-        
         /**
          * When the player is paused, and a seek is executed, the NetStream.time property will NOT update until the decoder encounters a new time tag,
          * which won't happen until playback is resumed. This wrecks havoc with external scrubber logic, so when the player is paused and a seek is requested,
          * we cache the intended time, and use it IN PLACE OF NetStream's time when the time accessor is hit. 
          */        
-        private var _pausedSeekValue:Number = -1;
+        protected var _pausedSeekValue:Number = -1;
         
-        private var _src:Object;
-        private var _metadata:Object;
-        private var _isPlaying:Boolean = false;
-        private var _isPaused:Boolean = true;
-        private var _isBuffering:Boolean = false;
-        private var _isSeeking:Boolean = false;
-        private var _isLive:Boolean = false;
-        private var _canSeekAhead:Boolean = false;
-        private var _hasEnded:Boolean = false;
-        private var _canPlayThrough:Boolean = false;
-        private var _loop:Boolean = false;
+        protected var _src:Object;
+        protected var _metadata:Object;
+        protected var _isPlaying:Boolean = false;
+        protected var _isPaused:Boolean = true;
+        protected var _isBuffering:Boolean = false;
+        protected var _isSeeking:Boolean = false;
+        protected var _isLive:Boolean = false;
+        protected var _canSeekAhead:Boolean = false;
+        protected var _hasEnded:Boolean = false;
+        protected var _canPlayThrough:Boolean = false;
+        protected var _loop:Boolean = false;
         
-        private var _model:VideoJSModel;
+        protected var _model:VideoJSModel;
         
         public function HTTPVideoProvider(){
             _model = VideoJSModel.getInstance();
             _metadata = {};
             _throughputTimer = new Timer(250, 0);
             _throughputTimer.addEventListener(TimerEvent.TIMER, onThroughputTimerTick);
-
-        }
+		}
 
         public function get loop():Boolean{
             return _loop;
@@ -97,24 +81,6 @@ package com.videojs.providers{
             }
         }
         
-		/**
-		 * the model may need a modified time if we've skipped to an unbuffered section (which changes the metadata duration)
-		 */
-        public function get timeForModel():Number{
-			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider -> get timeForModel: ' + _pausedSeekValue + ', ' + String(_ns.time + _previousStreamingOffset));
-            if(_ns != null){
-                if(_pausedSeekValue != -1){
-                    return _pausedSeekValue + _previousStreamingOffset;
-                }
-                else{
-                    return _ns.time + _previousStreamingOffset;
-                }
-            }
-            else{
-                return 0;
-            }
-        }
-		
         public function get duration():Number{
             if (_metadata != null && _metadata.duration != undefined) {
 				return Number(_metadata.duration);
@@ -124,24 +90,6 @@ package com.videojs.providers{
             }
         }
         
-		/**
-		 * the model may need a modified duration if we've skipped to an unbuffered section (which changes the metadata duration)
-		 */
-        public function get durationForModel():Number {
-			//if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider -> get durationForModel: ' + _isStreaming + ', ' + _originalDuration + ', ' + _metadata.duration);
-            if (_metadata != null && _metadata.duration != undefined) {
-				if (_isStreaming) {
-					return Number(_originalDuration);
-				}
-				else {
-					return Number(_metadata.duration);
-				}
-            }
-            else{
-                return 0;
-            }
-        }
-		
         public function get readyState():int{
             // if we have metadata and a known duration
             if(_metadata != null && _metadata.duration != undefined){
@@ -200,19 +148,6 @@ package com.videojs.providers{
             }
         }
         
-		/**
-		 * the model may need a modified state if we've skipped to an unbuffered section (which changes the metadata duration)
-		 */
-        public function get bufferedForModel():Number{
-			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider -> get bufferedForModel: ' + String((_ns.bytesLoaded / _ns.bytesTotal) * duration + _previousStreamingOffset));
-            if(duration > 0){
-                return (_ns.bytesLoaded / _ns.bytesTotal) * duration + _previousStreamingOffset;
-            }
-            else{
-                return 0;
-            }
-        }
-		
         public function get bufferedBytesEnd():int{
             if(_loadStarted){
                 return _ns.bytesLoaded;
@@ -328,38 +263,14 @@ package com.videojs.providers{
         }
         
         public function seekBySeconds(pTime:Number):void {
-			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider.seekBySeconds(): ' + pTime + ' - ' + _previousStreamingOffset + ' buffer: ' + buffered);
-			
-			var modifiedTime:Number = pTime;
-			// if we've used the streaming offset feature on this media before, then all future seeks need to be checked...
-			if (_previousStreamingOffset > 0)
-			{
-				// the stream is actually a sub-clip now (probably containing a range from the offset to the end, but nothing before the offset)
-				
-				// if we're going forward in the current sub-clip...
-				if (pTime > _previousStreamingOffset) modifiedTime -= _previousStreamingOffset;
-			}
-			
             if(_isPlaying){
-                if(duration != 0 && modifiedTime <= duration){
+                if(duration != 0 && pTime <= duration){
                     _isSeeking = true;
-					//_isStreaming = false;
                     _throughputTimer.stop();
                     if(_isPaused){
-                        _pausedSeekValue = modifiedTime; // TODO not sure if this should actually be modified???
+                        _pausedSeekValue = pTime;
                     }
-					// if the video source supports buffer offset, add the "ms" variable
-                    if(modifiedTime > buffered ) {
-                        _isStreaming = true;
-						_previousStreamingOffset = pTime;
-						//VideoJSModel.isSilent = true;
-						var cmd:String = _src.path + '?ms=' + pTime;
-						if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('--> trying buffer offset: ' + cmd);
-						_ns.play(cmd);
-                    }
-                    else {
-						_ns.seek(pTime);
-					}
+                    _ns.seek(pTime);
                     _isBuffering = true;
                 }
             }
@@ -368,7 +279,6 @@ package com.videojs.providers{
                 _isPlaying = true;
                 _hasEnded = false;
                 _isBuffering = true;
-				_isStreaming = false;
             }
         }
         
@@ -410,7 +320,7 @@ package com.videojs.providers{
             
         }
         
-        private function initNetConnection():void{
+        protected function initNetConnection():void{
             if(_nc == null){
                 _nc = new NetConnection();
                 _nc.client = this;
@@ -419,7 +329,7 @@ package com.videojs.providers{
             _nc.connect(null);
         }
         
-        private function initNetStream():void{
+        protected function initNetStream():void{
             if(_ns != null){
                 _ns.removeEventListener(NetStatusEvent.NET_STATUS, onNetStreamStatus);
                 _ns = null;
@@ -434,7 +344,7 @@ package com.videojs.providers{
             _model.broadcastEvent(new VideoPlaybackEvent(VideoPlaybackEvent.ON_STREAM_READY, {ns:_ns}));
         }
         
-        private function calculateThroughput():void{
+        protected function calculateThroughput():void{
             // if it's finished loading, we can kill the calculations and assume it can play through
             if(_ns.bytesLoaded == _ns.bytesTotal){
                 _canPlayThrough = true;
@@ -460,20 +370,20 @@ package com.videojs.providers{
             }
         }
         
-        private function onNetConnectionStatus(e:NetStatusEvent):void{
+        protected function onNetConnectionStatus(e:NetStatusEvent):void {
             switch(e.info.code){
                 case "NetConnection.Connect.Success":
                     initNetStream();
                     break;
                 case "NetConnection.Connect.Failed":
-
                     break;    
             }
             _model.broadcastEvent(new VideoPlaybackEvent(VideoPlaybackEvent.ON_NETCONNECTION_STATUS, {info:e.info}));
         }
         
-        private function onNetStreamStatus(e:NetStatusEvent):void{
-			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider.onNetStreamStatus(): ' + String(e.info.code));
+        protected function onNetStreamStatus(e:NetStatusEvent):void{
+			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider.onNetStreamStatus(): ' + e.info);
+			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('--> ' + _nc.uri + ', ' + _ns.info);
 			switch(e.info.code){
                 case "NetStream.Play.Start":
                     _pausedSeekValue = -1;
@@ -555,7 +465,7 @@ package com.videojs.providers{
             _model.broadcastEvent(new VideoPlaybackEvent(VideoPlaybackEvent.ON_NETSTREAM_STATUS, {info:e.info}));
         }
         
-        private function onThroughputTimerTick(e:TimerEvent):void{
+        protected function onThroughputTimerTick(e:TimerEvent):void{
             calculateThroughput();
         }
         
@@ -565,20 +475,14 @@ package com.videojs.providers{
             if(pMetaData.duration != undefined){
                 _isLive = false;
                 _canSeekAhead = true;
-				if (_originalDuration == -1) 
-				{
-					// when "skipping ahead" beyond what's buffered (eg, using the "ms" query parameter on LimeLight)
-					// the stream length effectively changes...but reporting this new duration to the JS GUI is undesirable
-					_originalDuration = pMetaData.duration;
-					_model.broadcastEventExternally(ExternalEventName.ON_DURATION_CHANGE, _metadata.duration);
-				}
+                _model.broadcastEventExternally(ExternalEventName.ON_DURATION_CHANGE, _metadata.duration);
             }
             else{
                 _isLive = true;
                 _canSeekAhead = false;
             }
             _model.broadcastEvent(new VideoPlaybackEvent(VideoPlaybackEvent.ON_META_DATA, {metadata:_metadata}));
-            if (!_metadata.duration) _model.broadcastEventExternally(ExternalEventName.ON_METADATA, _metadata);
+            _model.broadcastEventExternally(ExternalEventName.ON_METADATA, _metadata);
         }
         
         public function onCuePoint(pInfo:Object):void{

@@ -6,6 +6,7 @@ package{
     import com.videojs.VideoJSView;
     import com.videojs.events.VideoJSEvent;
     import com.videojs.structs.ExternalErrorEventName;
+	import flash.events.ContextMenuEvent;
 	import flash.events.KeyboardEvent;
     
     import flash.display.Sprite;
@@ -27,9 +28,20 @@ package{
     public class VideoJS extends Sprite{
         
 		/**
-		 * disable to build without console...  TODO: conditional compiling??
+		 * disable to build without console...recommend FALSE for all production deploys because the console eats cycles that should be spent decoding
 		 */
-		public static const ALLOW_CONSOLE:Boolean = true;
+		public static const ALLOW_CONSOLE:Boolean = false;
+		
+		/**
+		 * In order to use HTTPPartialVideoProvider instead of HTTPVideoProvider, set this to true (from flashVars.allowPartial)
+		 */
+		public static var allowPartial:Boolean = false;
+		
+		/**
+		 * If true, and using HTTPPartialVideoProvider, save the path if it appears to have been redirected on the initial stream request (can be set from flashVars.allowCachedRedirect)
+		 */
+		public static var allowCachedRedirect:Boolean = false;
+		// still a WIP,  doesn't do anything useful yet
 		
         private var _app:VideoJSApp;
         private var _stageSizeTimer:Timer;
@@ -38,8 +50,31 @@ package{
             _stageSizeTimer = new Timer(250);
             _stageSizeTimer.addEventListener(TimerEvent.TIMER, onStageSizeTimerTick);
             addEventListener(Event.ADDED_TO_STAGE, onAddedToStage);
+			
+			// if the player starts out paused and not buffering, JS was trying to poll "buffered" but there were no accessors yet
+			// this silences the error and returns 0 until things are truly ready
+			if (ExternalInterface.available)
+			{
+                ExternalInterface.addCallback("vjs_getProperty", temporaryCallback);
+			}
+			else
+			{
+				if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS constructor was unable to detect ExternalInterface');
+			}
         }
-        
+		
+		/**
+		 * this can catch some calls from JavaScript temporarily, until the Flash player is properly initialized
+		 * 
+		 * @param	pPropertyName
+		 * @return  always 0
+		 */
+		public function temporaryCallback(pPropertyName:String = ""):*
+		{
+			if (ALLOW_CONSOLE) VideoJSConsole.log('temporaryCallback: ' + pPropertyName);
+			return 0;
+		}
+		
         private function init():void {
 			if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.init()');
             // Allow JS calls from other domains
@@ -58,26 +93,50 @@ package{
             _app = new VideoJSApp();
             addChild(_app);
 			
-			// watch for console hotkey
+			// watch for console hotkey (tilde if allowed)
 			if (ALLOW_CONSOLE) 
 			{
 				if (stage != null) stage.focus = this;
 				this.addEventListener(KeyboardEvent.KEY_UP, watchKeys, false, 0, false);
 				this.addEventListener(Event.ENTER_FRAME, keepFocusOnFrame, false, 0, true);
-				//this.addChild(VideoJSConsole.instance);
 			}
 			
             _app.model.stageRect = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);
 			
             // add content-menu version info
-            var _ctxVersion:ContextMenuItem = new ContextMenuItem("VideoJS Flash Component v3.0.1", false, false);
+            var _ctxVersion:ContextMenuItem = new ContextMenuItem("VideoJS Flash Component v3.0.1b", false, false);
             var _ctxAbout:ContextMenuItem = new ContextMenuItem("Copyright © 2012 Zencoder, Inc.", false, false);
+			
+			// TODO add context controls similar to HTML5 version - currently, no MENU_ITEM_SELECT event fires, possibly due to JS GUI interference?
+			/*
+			var _ctxPlay:ContextMenuItem = new ContextMenuItem("Play/Pause", true);
+			_ctxPlay.addEventListener(ContextMenuEvent.MENU_ITEM_SELECT, togglePlayFromContext);
+			var _ctxMute:ContextMenuItem = new ContextMenuItem("Mute");
+			*/
+			
             var _ctxMenu:ContextMenu = new ContextMenu();
             _ctxMenu.hideBuiltInItems();
             _ctxMenu.customItems.push(_ctxVersion, _ctxAbout);
             this.contextMenu = _ctxMenu;
-
         }
+		
+		/**
+		 * allow play-pause functionality from the Flash context menu (similar to right clicking on HTML5)
+		 * 
+		 * @param	evt click on a menu item
+		 */
+		private function togglePlayFromContext(evt:ContextMenuEvent):void
+		{
+			if (ALLOW_CONSOLE) VideoJSConsole.log('togglePlayFromContext(): ' + evt);
+			if (evt != null)
+			{
+				if (_app != null)
+				{
+					if (_app.model.paused) _app.model.play();
+					else _app.model.pause();
+				}
+			}
+		}
         
         private function registerExternalMethods():void{
             
@@ -132,9 +191,17 @@ package{
             if(loaderInfo.parameters.preload != undefined && loaderInfo.parameters.preload == "true"){
                 _app.model.preload = true;
             }
+			
+			if (loaderInfo.parameters.allowPartial != undefined && loaderInfo.parameters.allowPartial == "true") {
+				allowPartial = true;
+			}
+            
+			// sadly, this ain't ready for primetime - Adobe makes it too hard to get HTTP reponse headers in the name of security
+			//if (loaderInfo.parameters.allowCachedRedirect != undefined && loaderInfo.parameters.allowCachedRedirect == "true") {
+			//	allowCachedRedirect = true;
+			//}
             
             if (loaderInfo.parameters.poster != undefined && loaderInfo.parameters.poster != "") {
-				if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.finish() -> parameters.poster = ' + loaderInfo.parameters.poster);
                 _app.model.poster = String(loaderInfo.parameters.poster);
             }
             
@@ -171,7 +238,7 @@ package{
         }
 		
 		/**
-		 * if the console is allowed, try to keep the keyboard focus
+		 * if the console is allowed, try to keep the keyboard focus.  this is pretty brute-force so set ALLOW_CONSOLE to false for production!!!
 		 * 
 		 * @param	evt check on frame
 		 */
@@ -182,10 +249,9 @@ package{
 		
 		private function watchKeys(evt:KeyboardEvent):void
 		{
-			trace("watchKeys: " + evt.keyCode);
 			switch (evt.keyCode) 
 			{
-				case 192: // `~
+				case 192: // `~ to toggle on screen trace console
 					if (!this.contains(VideoJSConsole.instance)) this.addChild(VideoJSConsole.instance);
 					else this.removeChild(VideoJSConsole.instance);
 					break;
@@ -214,7 +280,17 @@ package{
         }
         
         private function onGetPropertyCalled(pPropertyName:String = ""):*{
-			//if (ALLOW_CONSOLE) VideoJSConsole.log('VideoJS.onGetPropertyCalled(): ' + pPropertyName);
+			if (_app == null)
+			{
+				if (ALLOW_CONSOLE) VideoJSConsole.log('ERROR: onGetPropertyCalled() but app is null.');
+				return 0;
+			}
+			if (_app.model == null) 
+			{
+				if (ALLOW_CONSOLE) VideoJSConsole.log('ERROR: onGetPropertyCalled() but model is null.');
+				return 0;
+			}
+			
 			// originally, first 3 cases were missing a break...was that intentional?  probably not a problem because of return statements, but otherwise would cause fall through
 			switch(pPropertyName){
                 case "mode":
@@ -281,7 +357,7 @@ package{
                     return _app.model.buffered;
                     break;
                 case "bufferedBytesStart":
-                    return 0;
+                    return 0; // TODO we could report a more accurate value here if we're using a sub-clip
                     break;
                 case "bufferedBytesEnd":
                     return _app.model.bufferedBytesEnd;
