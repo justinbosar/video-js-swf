@@ -1,5 +1,6 @@
 package{
     
+	import com.videojs.gui.VideoJSGUI;
     import com.videojs.VideoJSApp;
 	import com.videojs.VideoJSConsole;
     import com.videojs.VideoJSModel;
@@ -30,12 +31,33 @@ package{
 		/**
 		 * disable to build without console...recommend FALSE for all production deploys because the console eats cycles that should be spent decoding
 		 */
-		public static const ALLOW_CONSOLE:Boolean = false;
+		public static const ALLOW_CONSOLE:Boolean = true;
 		
 		/**
 		 * In order to use HTTPPartialVideoProvider instead of HTTPVideoProvider, set this to true (from flashVars.allowPartial)
 		 */
 		public static var allowPartial:Boolean = false;
+		
+		/**
+		 * if true, we need to redirect to a new URL when the user clicks on the video itself
+		 */
+		public static var isClickThrough:Boolean = false;
+		
+		/**
+		 * URL to send the user to when they click on the video (not used if isClickThrough is false)
+		 */
+		public static var destURL:String = "";
+		
+		/**
+		 * show/hide GUI option
+		 */
+		public static var showControls:Boolean = false;
+		
+		/**
+		 * if we're in an environment where JavaScript performance is poor (IE7/IE8), set this to true to force a fallback GUI
+		 */
+		public static var useFlashUI:Boolean = false;
+		// WIP
 		
 		/**
 		 * If true, and using HTTPPartialVideoProvider, save the path if it appears to have been redirected on the initial stream request (can be set from flashVars.allowCachedRedirect)
@@ -104,7 +126,7 @@ package{
             _app.model.stageRect = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);
 			
             // add content-menu version info
-            var _ctxVersion:ContextMenuItem = new ContextMenuItem("VideoJS Flash Component v3.0.1b", false, false);
+            var _ctxVersion:ContextMenuItem = new ContextMenuItem("VideoJS Flash Component v3.0.1c", false, false);
             var _ctxAbout:ContextMenuItem = new ContextMenuItem("Copyright © 2012 Zencoder, Inc.", false, false);
 			
 			// TODO add context controls similar to HTML5 version - currently, no MENU_ITEM_SELECT event fires, possibly due to JS GUI interference?
@@ -127,6 +149,7 @@ package{
 		 */
 		private function togglePlayFromContext(evt:ContextMenuEvent):void
 		{
+			// the context menu isn't done...
 			if (ALLOW_CONSOLE) VideoJSConsole.log('togglePlayFromContext(): ' + evt);
 			if (evt != null)
 			{
@@ -151,6 +174,7 @@ package{
                 ExternalInterface.addCallback("vjs_pause", onPauseCalled);
                 ExternalInterface.addCallback("vjs_resume", onResumeCalled);
                 ExternalInterface.addCallback("vjs_stop", onStopCalled);
+				ExternalInterface.addCallback("vjs_fullscreen", onFullscreenCalled);
             }
             catch(e:SecurityError){
                 if (loaderInfo.parameters.debug != undefined && loaderInfo.parameters.debug == "true") {
@@ -196,6 +220,26 @@ package{
 				allowPartial = true;
 			}
             
+			if (loaderInfo.parameters.isClickThrough != undefined && loaderInfo.parameters.isClickThrough == "true") {
+				isClickThrough = true;
+			}
+            
+			if (loaderInfo.parameters.destURL != undefined) {
+				destURL = loaderInfo.parameters.destURL;
+			}
+			
+			if (loaderInfo.parameters.controls != undefined && loaderInfo.parameters.controls == "true") {
+				showControls = true;
+			}
+            
+			if (loaderInfo.parameters.flashUI != undefined && loaderInfo.parameters.flashUI == "true") {
+				useFlashUI = true;
+			}
+			
+			if (loaderInfo.parameters.logoURL != undefined) {
+				VideoJSGUI.logoURL = loaderInfo.parameters.logoURL;
+			}
+			
 			// sadly, this ain't ready for primetime - Adobe makes it too hard to get HTTP reponse headers in the name of security
 			//if (loaderInfo.parameters.allowCachedRedirect != undefined && loaderInfo.parameters.allowCachedRedirect == "true") {
 			//	allowCachedRedirect = true;
@@ -265,6 +309,7 @@ package{
                 _stageSizeTimer.stop();
                 _stageSizeTimer.removeEventListener(TimerEvent.TIMER, onStageSizeTimerTick);
                 init();
+				
             }
         }
         
@@ -442,7 +487,8 @@ package{
             _app.model.play();
         }
         
-        private function onPauseCalled():void{
+        private function onPauseCalled():void {
+			if (ALLOW_CONSOLE) VideoJSConsole.log('onPauseCalled()');
             _app.model.pause();
         }
         
@@ -453,6 +499,11 @@ package{
         private function onStopCalled():void{
             _app.model.stop();
         }
+		
+		private function onFullscreenCalled():void
+		{
+			VideoJSGUI.onToggleFullscreen(!VideoJSGUI.isFullscreen);
+		}
         
         private function onUncaughtError(e:Event):void{
             e.preventDefault();

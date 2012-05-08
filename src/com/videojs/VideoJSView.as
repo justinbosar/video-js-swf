@@ -2,7 +2,10 @@ package com.videojs{
     
     import com.videojs.events.VideoJSEvent;
     import com.videojs.events.VideoPlaybackEvent;
+	import com.videojs.gui.VideoJSGUI;
     import com.videojs.structs.ExternalErrorEventName;
+	import flash.events.MouseEvent;
+	import flash.net.navigateToURL;
     
     import flash.display.Bitmap;
     import flash.display.Loader;
@@ -22,6 +25,7 @@ package com.videojs{
         private var _uiPosterContainer:Sprite;
             private var _uiPosterImage:Loader;
         private var _uiBackground:Sprite;
+		private var _uiControls:VideoJSGUI;
         
         private var _model:VideoJSModel;
         
@@ -53,11 +57,43 @@ package com.videojs{
             _uiVideo.height = _model.stageRect.height;
             _uiVideo.smoothing = true;
             addChild(_uiVideo);
-            
+			this.addEventListener(MouseEvent.CLICK, onVideoClicked);
             _model.videoReference = _uiVideo;
-            
+           
         }
         
+		/**
+		 * mimic the HTML5 behavior where clicking on the video toggles play/pause
+		 * 
+		 * @param	evt typically mouse input
+		 */
+		private function onVideoClicked(evt:MouseEvent):void
+		{
+			if (VideoJS.isClickThrough)
+			{
+				var filter:RegExp = new RegExp("^http[s]?\:\\/\\/"); // very basic validation...
+				if (VideoJS.destURL.match(filter) && (stage.mouseY < (_uiControls.y - 10)))
+				{
+					_model.pause();
+					var req:URLRequest = new URLRequest(VideoJS.destURL);
+					navigateToURL(req, "_blank");
+					return;
+				}
+			}
+			if ((stage != null) && (_uiControls != null))
+			{
+				if (stage.mouseY < _uiControls.y)
+				{
+					if (_model.playing)
+					{
+						if (_model.paused) _model.resume();
+						else _model.pause();
+					}
+					else _model.play();
+				}
+			}
+		}
+		
         /**
          * Loads the poster frame, if one has been specified. 
          * 
@@ -90,6 +126,12 @@ package com.videojs{
 
         private function sizeVideoObject():void{
             
+			if (_uiControls == null)
+			{
+				_uiControls = new VideoJSGUI();
+				if (VideoJS.showControls) addChild(_uiControls);
+			}
+			
             var __targetWidth:int, __targetHeight:int;
             
             var __availableWidth:int = _model.stageRect.width;
@@ -179,12 +221,14 @@ package com.videojs{
             _uiBackground.graphics.endFill();
         }
         
-        private function onStageResize(e:VideoJSEvent):void{
-            
+        private function onStageResize(e:VideoJSEvent):void
+		{
+            if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log("VideoJSView.onStageResize(): " + _model.stageRect.width + "x" + _model.stageRect.height);
             _uiBackground.graphics.clear();
             _uiBackground.graphics.beginFill(_model.backgroundColor, 1);
             _uiBackground.graphics.drawRect(0, 0, _model.stageRect.width, _model.stageRect.height);
             _uiBackground.graphics.endFill();
+			if (_uiControls != null) _uiControls.setSize(_model.stageRect.width, _model.stageRect.height);
             sizePoster();
             sizeVideoObject();
         }
@@ -223,6 +267,7 @@ package com.videojs{
         
         private function onStreamStart(e:VideoPlaybackEvent):void{
             _uiPosterImage.visible = false;
+			if (_uiControls != null) _uiControls.setSize(_model.stageRect.width, _model.stageRect.height);
         }
         
         private function onMetaData(e:VideoPlaybackEvent):void{        

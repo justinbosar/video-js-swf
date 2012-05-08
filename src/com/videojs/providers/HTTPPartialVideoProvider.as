@@ -66,7 +66,7 @@ package com.videojs.providers{
         public function get timeForModel():Number{
             if (_ns != null) {
 				// shouldn't return more than the duration, though it's possible somehow (probably because of rounding back to the nearest MPEG-4 keyframe on seeks)
-				if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPPartialVideoProvider -> get timeForModel: ' + String(_pausedSeekValue) + ', ' + String(_ns.time + _previousStreamingOffset));
+				//if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPPartialVideoProvider -> get timeForModel: ' + String(_pausedSeekValue) + ', ' + String(_ns.time + _previousStreamingOffset));
                 if(_pausedSeekValue != -1){
                     return Math.min(_pausedSeekValue, durationForModel);
                 }
@@ -102,7 +102,7 @@ package com.videojs.providers{
 		 */
         public function get bufferedForModel():Number{
             if (duration > 0) {
-				if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPPartialVideoProvider -> get bufferedForModel: ' + String((_ns.bytesLoaded / _ns.bytesTotal) * duration + _previousStreamingOffset));
+				//if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPPartialVideoProvider -> get bufferedForModel: ' + String((_ns.bytesLoaded / _ns.bytesTotal) * duration + _previousStreamingOffset));
 				// make sure previous out-of-buffer seeks haven't caused buffer to be greater than duration
                 return Math.min((_ns.bytesLoaded / _ns.bytesTotal) * duration + _previousStreamingOffset, durationForModel);
             }

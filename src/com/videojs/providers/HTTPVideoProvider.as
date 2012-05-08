@@ -383,7 +383,7 @@ package com.videojs.providers{
         
         protected function onNetStreamStatus(e:NetStatusEvent):void{
 			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('HTTPVideoProvider.onNetStreamStatus(): ' + e.info);
-			if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('--> ' + _nc.uri + ', ' + _ns.info);
+			//if (VideoJS.ALLOW_CONSOLE) VideoJSConsole.log('--> ' + _nc.uri + ', ' + _ns.info);
 			switch(e.info.code){
                 case "NetStream.Play.Start":
                     _pausedSeekValue = -1;
